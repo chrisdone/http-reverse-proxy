@@ -263,6 +263,7 @@ data WaiProxySettings = WaiProxySettings
     -- Default: have one global setting
     --
     -- Since 0.4.2
+    , wpsLogRequest :: HC.Request -> IO ()
     }
 
 -- | How to set the X-Real-IP request header.
@@ -284,6 +285,7 @@ defaultWaiProxySettings = WaiProxySettings
         , wpsUpgradeToRaw = \req ->
             (CI.mk <$> lookup "upgrade" (WAI.requestHeaders req)) == Just "websocket"
         , wpsGetDest = Nothing
+        , wpsLogRequest = const (pure ())
         }
 
 renderHeaders :: WAI.Request -> HT.RequestHeaders -> Builder
@@ -404,8 +406,12 @@ waiProxyToSettings getDest wps' manager req0 sendResponse = do
                             (fromIntegral i)
                             ($ WAI.requestBody req)
                         WAI.ChunkedBody -> HC.RequestBodyStreamChunked ($ WAI.requestBody req)
+
+
             bracket
-                (try $ HC.responseOpen req' manager)
+                (try $ do
+                     liftIO $ wpsLogRequest wps' req'
+                     HC.responseOpen req' manager)
                 (either (const $ return ()) HC.responseClose)
                 $ \case
                     Left e -> wpsOnExc wps e req sendResponse
